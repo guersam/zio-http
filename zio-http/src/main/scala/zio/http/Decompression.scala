@@ -38,10 +38,9 @@ object Decompression {
   }
 
   lazy val config: Config[Decompression] =
-    Config.string.mapOrFail {
-      case "no"        => Right(No)
-      case "strict"    => Right(Strict)
-      case "nonstrict" => Right(NonStrict)
-      case other       => Left(Config.Error.InvalidData(message = s"Invalid decompression value: $other"))
-    }
+    Config.string.switch(
+      "no"        -> Config.Constant(No),
+      "strict"    -> Config.Constant(Strict),
+      "nonstrict" -> Config.Constant(NonStrict),
+    )
 }

@@ -28,10 +28,9 @@ object ConnectionPoolConfig {
       extends ConnectionPoolConfig
 
   lazy val config: Config[ConnectionPoolConfig] = {
-    val disabled       = Config.string.mapOrFail {
-      case "disabled" => Right(Disabled)
-      case other      => Left(Config.Error.InvalidData(message = s"Invalid value for ConnectionPoolConfig: $other"))
-    }
+    val disabled       = Config.string.switch(
+      "disabled" -> Config.Constant(Disabled),
+    )
     val fixed          = Config.int("fixed").map(Fixed.apply)
     val dynamic        =
       (Config.int("minimum") ++

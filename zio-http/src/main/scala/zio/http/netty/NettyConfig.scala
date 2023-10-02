@@ -56,14 +56,13 @@ object NettyConfig {
     (LeakDetectionLevel.config.nested("leak-detection-level").withDefault(NettyConfig.default.leakDetectionLevel) ++
       Config
         .string("channel-type")
-        .mapOrFail {
-          case "auto"   => Right(ChannelType.AUTO)
-          case "nio"    => Right(ChannelType.NIO)
-          case "epoll"  => Right(ChannelType.EPOLL)
-          case "kqueue" => Right(ChannelType.KQUEUE)
-          case "uring"  => Right(ChannelType.URING)
-          case other    => Left(Config.Error.InvalidData(message = s"Invalid channel type: $other"))
-        }
+        .switch(
+          "auto"   -> Config.Constant(ChannelType.AUTO),
+          "nio"    -> Config.Constant(ChannelType.NIO),
+          "epoll"  -> Config.Constant(ChannelType.EPOLL),
+          "kqueue" -> Config.Constant(ChannelType.KQUEUE),
+          "uring"  -> Config.Constant(ChannelType.URING),
+        )
         .withDefault(NettyConfig.default.channelType) ++
       Config.int("max-threads").withDefault(NettyConfig.default.nThreads) ++
       Config.duration("shutdown-quiet-period").withDefault(NettyConfig.default.shutdownQuietPeriodDuration) ++
@@ -106,12 +105,11 @@ object NettyConfig {
     case object PARANOID extends LeakDetectionLevel
 
     lazy val config: Config[LeakDetectionLevel] =
-      Config.string.mapOrFail {
-        case "disabled" => Right(LeakDetectionLevel.DISABLED)
-        case "simple"   => Right(LeakDetectionLevel.SIMPLE)
-        case "advanced" => Right(LeakDetectionLevel.ADVANCED)
-        case "paranoid" => Right(LeakDetectionLevel.PARANOID)
-        case other      => Left(Config.Error.InvalidData(message = s"Invalid leak detection level: $other"))
-      }
+      Config.string.switch(
+        "disabled" -> Config.Constant(LeakDetectionLevel.DISABLED),
+        "simple"   -> Config.Constant(LeakDetectionLevel.SIMPLE),
+        "advanced" -> Config.Constant(LeakDetectionLevel.ADVANCED),
+        "paranoid" -> Config.Constant(LeakDetectionLevel.PARANOID),
+      )
   }
 }

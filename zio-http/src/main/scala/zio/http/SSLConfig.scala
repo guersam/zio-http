@@ -62,12 +62,11 @@ object SSLConfig {
     case object Redirect extends HttpBehaviour
 
     val config: Config[HttpBehaviour] =
-      Config.string.mapOrFail {
-        case "accept"   => Right(Accept)
-        case "fail"     => Right(Fail)
-        case "redirect" => Right(Redirect)
-        case other      => Left(Config.Error.InvalidData(message = s"Invalid Http behaviour: $other"))
-      }
+      Config.string.switch(
+        "accept"   -> Config.Constant(Accept),
+        "fail"     -> Config.Constant(Fail),
+        "redirect" -> Config.Constant(Redirect),
+      )
   }
 
   sealed trait Data
@@ -84,10 +83,9 @@ object SSLConfig {
     final case class FromResource(certPath: String, keyPath: String) extends Data
 
     val config: Config[Data] = {
-      val generate     = Config.string.mapOrFail {
-        case "generate" => Right(Generate)
-        case other      => Left(Config.Error.InvalidData(message = s"Invalid Data.Generate: $other"))
-      }
+      val generate     = Config.string.switch(
+        "generate" -> Config.Constant(Generate),
+      )
       val fromFile     =
         (Config.string("certPath") ++ Config.string("keyPath")).map { case (certPath, keyPath) =>
           FromFile(certPath, keyPath)
@@ -106,10 +104,9 @@ object SSLConfig {
     case object OpenSSL extends Provider
 
     val config: Config[Provider] =
-      Config.string.mapOrFail {
-        case "jdk"     => Right(JDK)
-        case "openssl" => Right(OpenSSL)
-        case other     => Left(Config.Error.InvalidData(message = s"Invalid Provider: $other"))
-      }
+      Config.string.switch(
+        "jdk"     -> Config.Constant(JDK),
+        "openssl" -> Config.Constant(OpenSSL),
+      )
   }
 }

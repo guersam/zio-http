@@ -50,11 +50,10 @@ object DnsResolver {
     case object Drop    extends ExpireAction
 
     val config: zio.Config[ExpireAction] =
-      zio.Config.string.mapOrFail {
-        case "refresh" => Right(Refresh)
-        case "drop"    => Right(Drop)
-        case other     => Left(zio.Config.Error.InvalidData(message = s"Invalid expire action: $other"))
-      }
+      zio.Config.string.switch(
+        "refresh" -> zio.Config.Constant(Refresh),
+        "drop"    -> zio.Config.Constant(Drop),
+      )
   }
 
   private sealed trait CachePatch

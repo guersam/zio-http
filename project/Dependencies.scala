@@ -8,6 +8,7 @@ object Dependencies {
   val ScalaCompactCollectionVersion = "2.11.0"
   val ZioVersion                    = "2.0.18"
   val ZioCliVersion                 = "0.5.0"
+  val ZioConfigVersion              = "4.0.0-RC16+5-a745e59a-SNAPSHOT"
   val ZioSchemaVersion              = "0.4.14"
   val SttpVersion                   = "3.3.18"
 
@@ -31,6 +32,7 @@ object Dependencies {
 
   val zio                   = "dev.zio" %% "zio"                 % ZioVersion
   val `zio-cli`             = "dev.zio" %% "zio-cli"             % ZioCliVersion
+  val `zio-config`          = "dev.zio" %% "zio-config"          % ZioConfigVersion
   val `zio-streams`         = "dev.zio" %% "zio-streams"         % ZioVersion
   val `zio-schema`          = "dev.zio" %% "zio-schema"          % ZioSchemaVersion
   val `zio-schema-json`     = "dev.zio" %% "zio-schema-json"     % ZioSchemaVersion

@@ -161,9 +161,11 @@ object Server {
 
   object Config {
     lazy val config: zio.Config[Config] = {
-      SSLConfig.config.optional ++
-        zio.Config.string("binding-host").optional ++
-        zio.Config.int("binding-port").withDefault(Config.default.address.getPort) ++
+      (
+        zio.Config.string("binding-host").withDefault(Config.default.address.getHostName) ++
+          zio.Config.int("binding-port").withDefault(Config.default.address.getPort)
+      ).mapAttempt { case (host, port) => new InetSocketAddress(host, port) } ++
+        SSLConfig.config.nested("ssl").optional ++
         zio.Config.boolean("accept-continue").withDefault(Config.default.acceptContinue) ++
         zio.Config.boolean("keep-alive").withDefault(Config.default.keepAlive) ++
         Decompression.config.nested("request-decompression").withDefault(Config.default.requestDecompression) ++
@@ -175,9 +177,8 @@ object Server {
         zio.Config.duration("idle-timeout").optional.withDefault(Config.default.idleTimeout)
     }.map {
       case (
+            address,
             sslConfig,
-            host,
-            port,
             acceptContinue,
             keepAlive,
             requestDecompression,
@@ -190,7 +191,7 @@ object Server {
           ) =>
         default.copy(
           sslConfig = sslConfig,
-          address = new InetSocketAddress(host.getOrElse(Config.default.address.getHostName), port),
+          address = address,
           acceptContinue = acceptContinue,
           keepAlive = keepAlive,
           requestDecompression = requestDecompression,
@@ -284,11 +285,10 @@ object Server {
         case object Deflate extends CompressionType
 
         lazy val config: zio.Config[CompressionType] =
-          zio.Config.string.mapOrFail {
-            case "gzip"    => Right(GZip)
-            case "deflate" => Right(Deflate)
-            case other     => Left(zio.Config.Error.InvalidData(message = s"Invalid compression type: $other"))
-          }
+          zio.Config.string.switch(
+            "gzip"    -> zio.Config.Constant(GZip),
+            "deflate" -> zio.Config.Constant(Deflate),
+          )
       }
 
       lazy val config: zio.Config[CompressionOptions] =
