@@ -37,19 +37,33 @@ trait Cursor {
 
   def downFields: Chunk[Cursor.FieldCursor] =
     config match {
-      case Config.Nested(name, c)    => Chunk(Cursor.FieldCursor(name, c, history))
-      case Config.Lazy(thunk)        => Cursor.GenericCursor(thunk(), this :: history).downFields // TODO recursive
+      case Config.Nested(name, c)        => Chunk(Cursor.FieldCursor(name, c, history))
+      case Config.Lazy(thunk)            => Cursor.GenericCursor(thunk(), this :: history).downFields // TODO recursive
+      case Config.Zipped(left, right, _) =>
+        Cursor.GenericCursor(left, this :: history).downFields ++
+          Cursor.GenericCursor(right, this :: history).downFields
+
+      case Config.MapOrFail(c, _) => Cursor.GenericCursor(c, this :: history).downFields
+
       case _: Config.Primitive[_]    => Chunk.empty
       case _: Config.Zipped[_, _, _] => Chunk.empty
       case _                         => Chunk.empty
     }
 
-  def downPrimitive: Option[Cursor.PrimitiveCursor] =
+  def show: String =
+    toString
+      .replaceAll("""zio\.[a-zA-Z0-9.$]+\$Lambda[a-z0-9/@$]+""", "Lambda(...)")
+      .replaceAll("""zio\.ZippableLowPriority\d*\$\$(Lambda|anon)[a-z0-9/@$]+""", "Zippable(...)")
+
+  def downPrimitive: Option[Cursor.PrimitiveCursor] = {
+//    println(s"downPrimitive: $show")
     config match {
       case p: Config.Primitive[_] => Some(Cursor.PrimitiveCursor(p, history))
       case Config.Lazy(thunk)     => Cursor.GenericCursor(thunk(), this :: history).downPrimitive // TODO recursive
+      case Config.MapOrFail(c, _) => Cursor.GenericCursor(c, this :: history).downPrimitive
       case _                      => None
     }
+  }
 
   def toTable: Table = {
     val rows = downFields.map { f =>
