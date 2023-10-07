@@ -68,6 +68,42 @@ object GenConfigDocs2Spec extends ZIOSpecDefault {
 
       assertTrue(GenConfigDocs2.gen(conf) == expected)
     },
+    test("Described") {
+      case class Foo(str: String, num: Int)
+      val conf =
+        (Config.string("str") ++ Config.int("num").??("it's a number")).map { case (str, num) =>
+          Foo(str, num)
+        }
+
+      val expected = {
+        Table(
+          Chunk(
+            Row("str", "Text"),
+            Row("num", "Integer", description = Some("it's a number")),
+          ),
+        )
+      }
+
+      assertTrue(GenConfigDocs2.gen(conf) == expected)
+    },
+    test("Optional") {
+      case class Foo(str: String, num: Option[Int])
+      val conf =
+        (Config.string("str") ++ Config.int("num").optional).map { case (str, num) =>
+          Foo(str, num)
+        }
+
+      val expected = {
+        Table(
+          Chunk(
+            Row("str", "Text"),
+            Row("num", "Integer", optional = true),
+          ),
+        )
+      }
+
+      assertTrue(GenConfigDocs2.gen(conf) == expected)
+    },
   )
 
 }

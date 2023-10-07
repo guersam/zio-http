@@ -1,8 +1,10 @@
 package zio.http.docs
 
-import zio.{Config, Chunk}
+import zio.{Chunk, Config}
 
-case class Row(name: String, tpe: String, description: Option[String] = None)
+import scala.collection.View
+
+case class Row(name: String, tpe: String, description: Option[String] = None, optional: Boolean = false)
 
 case class Table(rows: Chunk[Row]) {
   def toDocusaurusMarkdown: String = {
@@ -41,6 +43,7 @@ trait Cursor {
       case Config.Lazy(thunk)            => Cursor.GenericCursor(thunk(), this :: history).downFields // TODO recursive
       case Config.MapOrFail(c, _)        => Cursor.GenericCursor(c, this :: history).downFields
       case Config.Described(c, _)        => Cursor.GenericCursor(c, this :: history).downFields
+      case Config.Optional(c)            => Cursor.GenericCursor(c, this :: history).downFields
       case Config.Zipped(left, right, _) =>
         Cursor.GenericCursor(left, this :: history).downFields ++
           Cursor.GenericCursor(right, this :: history).downFields
@@ -69,9 +72,16 @@ trait Cursor {
     case _                      => false
   }
 
+  def isOptional: Boolean = config match {
+    case Config.Optional(_) => true
+    case _                  => false
+  }
+
+  def upUntilSiblings: View[Cursor] =
+    history.view.takeWhile(!_.isZipped)
+
   def descriptions: Chunk[String] =
-    history.view
-      .takeWhile(!_.isZipped)
+    upUntilSiblings
       .map(_.config)
       .collect { case Config.Described(_, desc) =>
         desc
@@ -87,8 +97,11 @@ object Cursor {
 
   case class FieldCursor(name: String, config: Config[_], history: List[Cursor]) extends Cursor {
 
-    def toRow: Row =
-      Row(name = name, tpe = tpe, description = descriptions.headOption)
+    def toRow: Row = {
+      val optional = upUntilSiblings.exists(_.isOptional)
+
+      Row(name = name, tpe = tpe, description = descriptions.headOption, optional = optional)
+    }
 
     def tpe: String =
       this.downPrimitive match {
