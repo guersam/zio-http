@@ -43,39 +43,61 @@ trait Cursor {
 
   def history: List[Cursor]
 
+  def toTable: Table = Table(downFields.map(_.toRow))
+
   def downFields: Chunk[Cursor.FieldCursor] =
     config match {
       case Config.Nested(name, c)        => Chunk(Cursor.FieldCursor(name, c, history))
-      case Config.Lazy(thunk)            => Cursor.GenericCursor(thunk(), this :: history).downFields // TODO recursive
-      case Config.MapOrFail(c, _)        => Cursor.GenericCursor(c, this :: history).downFields
-      case Config.Described(c, _)        => Cursor.GenericCursor(c, this :: history).downFields
-      case Config.Optional(c)            => Cursor.GenericCursor(c, this :: history).downFields
-      case Config.Zipped(left, right, _) =>
-        Cursor.GenericCursor(left, this :: history).downFields ++
-          Cursor.GenericCursor(right, this :: history).downFields
+      case Config.Lazy(thunk)            => down(thunk()).downFields // TODO recursive
+      case Config.MapOrFail(c, _)        => down(c).downFields
+      case Config.Described(c, _)        => down(c).downFields
+      case Config.Optional(c)            => down(c).downFields
+      case Config.Zipped(left, right, _) => down(left).downFields ++ down(right).downFields
 
       case f: Config.Fallback[_] =>
         // Second will be matched by `upFallback` later
-        Cursor.GenericCursor(f.first, this :: history).downFields
+        down(f.first).downFields
 
       case _: Config.Primitive[_] => Chunk.empty
       case _                      => Chunk.empty
     }
 
-  def showConfig: String =
-    config.toString
-      .replaceAll("""zio\.[a-zA-Z0-9.$]+\$Lambda[a-z0-9/@$]+""", "Lambda(...)")
-      .replaceAll("""zio\.ZippableLowPriority\d*\$\$(Lambda|anon)[a-z0-9/@$]+""", "Zippable(...)")
-
   def downPrimitive: Option[Cursor.PrimitiveCursor] = {
 //    println(s"downPrimitive: $show")
     config match {
       case p: Config.Primitive[_] => Some(Cursor.PrimitiveCursor(p, history))
-      case Config.Lazy(thunk)     => Cursor.GenericCursor(thunk(), this :: history).downPrimitive // TODO recursive
-      case Config.MapOrFail(c, _) => Cursor.GenericCursor(c, this :: history).downPrimitive
+      case Config.Lazy(thunk)     => down(thunk()).downPrimitive // TODO recursive
+      case Config.MapOrFail(c, _) => down(c).downPrimitive
       case _                      => None
     }
   }
+
+  def upUntilSiblings: View[Cursor] =
+    history.view.takeWhile(!_.isZipped)
+
+  def upFallback: Option[Cursor.FallbackCursor] =
+    upUntilSiblings.collectFirst {
+      case c if c.config.isInstanceOf[Config.Fallback[_]] =>
+        Cursor.FallbackCursor(c.config.asInstanceOf[Config.Fallback[_]], c.history)
+    }
+
+  def downConstant: Option[Cursor.ConstantCursor] =
+    config match {
+      case c: Config.Constant[_] => Some(Cursor.ConstantCursor(c, history))
+      case Config.Lazy(thunk)    => down(thunk()).downConstant
+      case _                     => None
+    }
+
+  protected def down(c: Config[_]): Cursor =
+    Cursor.GenericCursor(c, this :: history)
+
+  def getDescriptions: Chunk[String] =
+    upUntilSiblings
+      .map(_.config)
+      .collect { case Config.Described(_, desc) =>
+        desc
+      }
+      .to(Chunk)
 
   def isZipped: Boolean = config match {
     case Config.Zipped(_, _, _) => true
@@ -87,31 +109,11 @@ trait Cursor {
     case _                  => false
   }
 
-  def upUntilSiblings: View[Cursor] =
-    history.view.takeWhile(!_.isZipped)
+  def showConfig: String =
+    config.toString
+      .replaceAll("""zio\.[a-zA-Z0-9.$]+\$Lambda[a-z0-9/@$]+""", "Lambda(...)")
+      .replaceAll("""zio\.ZippableLowPriority\d*\$\$(Lambda|anon)[a-z0-9/@$]+""", "Zippable(...)")
 
-  def getDescriptions: Chunk[String] =
-    upUntilSiblings
-      .map(_.config)
-      .collect { case Config.Described(_, desc) =>
-        desc
-      }
-      .to(Chunk)
-
-  def upFallback: Option[Cursor.FallbackCursor] =
-    upUntilSiblings.collectFirst {
-      case c if c.config.isInstanceOf[Config.Fallback[_]] =>
-        Cursor.FallbackCursor(c.config.asInstanceOf[Config.Fallback[_]], c.history)
-    }
-
-  def downConstant: Option[Cursor.ConstantCursor] =
-    config match {
-      case c: Config.Constant[_] => Some(Cursor.ConstantCursor(c, history))
-      case Config.Lazy(thunk)    => Cursor.fromConfig(thunk()).downConstant
-      case _                     => None
-    }
-
-  def toTable: Table = Table(downFields.map(_.toRow))
 }
 
 object Cursor {
@@ -139,13 +141,15 @@ object Cursor {
 
   case class FallbackCursor(config: Config.Fallback[_], history: List[Cursor]) extends Cursor {
 
-    private val missingOnly     = Config.Error.MissingData(Chunk.empty, "")
     def getDefault: Option[Any] =
       config match {
-        case Config.FallbackWith(_, v, cond) if cond(missingOnly) => Cursor.fromConfig(v).downConstant.map(_.getValue)
-        case _                                                    => None
+        case Config.FallbackWith(_, v, cond) if cond(missingOnly) =>
+          Cursor.fromConfig(v).downConstant.map(_.getValue)
+
+        case _ => None
       }
 
+    private val missingOnly = Config.Error.MissingData(Chunk.empty, "")
   }
 
   case class ConstantCursor(config: Config.Constant[_], history: List[Cursor]) extends Cursor {
