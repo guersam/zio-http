@@ -33,6 +33,7 @@ const sidebars = {
             "dsl/template"
           ]
         },
+        "configuration",
         {
           type: "category",
           label: "Examples",

@@ -20,6 +20,9 @@ object GenConfigDocsSpec extends ZIOSpecDefault {
         println(tbl)
         println()
       }
+//      GenConfigDocs.getFields(zio.http.Client.Config.config, zio.Chunk.empty).collectFirst {
+//        case f if f.name == "connection-pool" => f.variants.foreach(println)
+//      }
 
       assertTrue(doc == expected)
     },
