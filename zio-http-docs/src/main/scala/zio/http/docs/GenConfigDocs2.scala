@@ -2,7 +2,7 @@ package zio.http.docs
 
 import zio.{Config, Chunk}
 
-case class Row(name: String, tpe: String) {}
+case class Row(name: String, tpe: String, description: Option[String] = None)
 
 case class Table(rows: Chunk[Row]) {
   def toDocusaurusMarkdown: String = {
@@ -39,19 +39,18 @@ trait Cursor {
     config match {
       case Config.Nested(name, c)        => Chunk(Cursor.FieldCursor(name, c, history))
       case Config.Lazy(thunk)            => Cursor.GenericCursor(thunk(), this :: history).downFields // TODO recursive
+      case Config.MapOrFail(c, _)        => Cursor.GenericCursor(c, this :: history).downFields
+      case Config.Described(c, _)        => Cursor.GenericCursor(c, this :: history).downFields
       case Config.Zipped(left, right, _) =>
         Cursor.GenericCursor(left, this :: history).downFields ++
           Cursor.GenericCursor(right, this :: history).downFields
 
-      case Config.MapOrFail(c, _) => Cursor.GenericCursor(c, this :: history).downFields
-
-      case _: Config.Primitive[_]    => Chunk.empty
-      case _: Config.Zipped[_, _, _] => Chunk.empty
-      case _                         => Chunk.empty
+      case _: Config.Primitive[_] => Chunk.empty
+      case _                      => Chunk.empty
     }
 
-  def show: String =
-    toString
+  def showConfig: String =
+    config.toString
       .replaceAll("""zio\.[a-zA-Z0-9.$]+\$Lambda[a-z0-9/@$]+""", "Lambda(...)")
       .replaceAll("""zio\.ZippableLowPriority\d*\$\$(Lambda|anon)[a-z0-9/@$]+""", "Zippable(...)")
 
@@ -65,24 +64,38 @@ trait Cursor {
     }
   }
 
-  def toTable: Table = {
-    val rows = downFields.map { f =>
-      Row(f.name, f.tpe)
-    }
-
-    Table(rows)
+  def isZipped: Boolean = config match {
+    case Config.Zipped(_, _, _) => true
+    case _                      => false
   }
+
+  def descriptions: Chunk[String] =
+    history.view
+      .takeWhile(!_.isZipped)
+      .map(_.config)
+      .collect { case Config.Described(_, desc) =>
+        desc
+      }
+      .to(Chunk)
+
+  def toTable: Table = Table(downFields.map(_.toRow))
 }
 
 object Cursor {
 
-  case class GenericCursor(config: Config[_], history: List[Cursor])             extends Cursor
+  case class GenericCursor(config: Config[_], history: List[Cursor]) extends Cursor
+
   case class FieldCursor(name: String, config: Config[_], history: List[Cursor]) extends Cursor {
+
+    def toRow: Row =
+      Row(name = name, tpe = tpe, description = descriptions.headOption)
+
     def tpe: String =
       this.downPrimitive match {
         case Some(p) => p.tpe
         case None    => "Unknown"
       }
+
   }
 
   case class PrimitiveCursor(config: Config.Primitive[_], history: List[Cursor]) extends Cursor {
