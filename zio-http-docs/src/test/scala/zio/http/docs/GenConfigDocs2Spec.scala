@@ -7,33 +7,33 @@ object GenConfigDocs2Spec extends ZIOSpecDefault {
 
   def spec = suite("GenConfigDocs")(
     suite("basic")(
-      test("Single") {
+      test("single") {
         val conf     = Config.string("str")
         val expected =
           Table(
             Chunk(
-              Row("str", "Text"),
+              Row("str", FieldType.Primitive("Text")),
             ),
           )
 
         assertTrue(GenConfigDocs2.gen(conf) == expected)
       },
-      test("Zipped") {
+      test("zipped") {
         val conf =
           Config.string("str") ++ Config.int("num")
 
         val expected = {
           Table(
             Chunk(
-              Row("str", "Text"),
-              Row("num", "Integer"),
+              Row("str", FieldType.Primitive("Text")),
+              Row("num", FieldType.Primitive("Integer")),
             ),
           )
         }
 
         assertTrue(GenConfigDocs2.gen(conf) == expected)
       },
-      test("Zipped and Mapped") {
+      test("zipped and mapped") {
         case class Foo(str: String, num: Int)
         val conf =
           (Config.string("str") ++ Config.int("num")).map { case (str, num) =>
@@ -43,15 +43,15 @@ object GenConfigDocs2Spec extends ZIOSpecDefault {
         val expected = {
           Table(
             Chunk(
-              Row("str", "Text"),
-              Row("num", "Integer"),
+              Row("str", FieldType.Primitive("Text")),
+              Row("num", FieldType.Primitive("Integer")),
             ),
           )
         }
 
         assertTrue(GenConfigDocs2.gen(conf) == expected)
       },
-      test("Described") {
+      test("described") {
         case class Foo(str: String, num: Int)
         val conf =
           (Config.string("str") ++ Config.int("num").??("it's a number")).map { case (str, num) =>
@@ -61,15 +61,15 @@ object GenConfigDocs2Spec extends ZIOSpecDefault {
         val expected = {
           Table(
             Chunk(
-              Row("str", "Text"),
-              Row("num", "Integer", description = Some("it's a number")),
+              Row("str", FieldType.Primitive("Text")),
+              Row("num", FieldType.Primitive("Integer"), description = Some("it's a number")),
             ),
           )
         }
 
         assertTrue(GenConfigDocs2.gen(conf) == expected)
       },
-      test("Described") {
+      test("described") {
         case class Foo(str: String, num: Int)
         val conf =
           (Config.string("str") ++ Config.int("num").??("it's a number")).map { case (str, num) =>
@@ -79,15 +79,15 @@ object GenConfigDocs2Spec extends ZIOSpecDefault {
         val expected = {
           Table(
             Chunk(
-              Row("str", "Text"),
-              Row("num", "Integer", description = Some("it's a number")),
+              Row("str", FieldType.Primitive("Text")),
+              Row("num", FieldType.Primitive("Integer"), description = Some("it's a number")),
             ),
           )
         }
 
         assertTrue(GenConfigDocs2.gen(conf) == expected)
       },
-      test("Optional") {
+      test("optional") {
         case class Foo(str: String, num: Option[Int])
         val conf =
           (Config.string("str") ++ Config.int("num").optional).map { case (str, num) =>
@@ -97,8 +97,8 @@ object GenConfigDocs2Spec extends ZIOSpecDefault {
         val expected = {
           Table(
             Chunk(
-              Row("str", "Text"),
-              Row("num", "Integer", optional = true),
+              Row("str", FieldType.Primitive("Text")),
+              Row("num", FieldType.Primitive("Integer"), optional = true),
             ),
           )
         }
@@ -107,7 +107,7 @@ object GenConfigDocs2Spec extends ZIOSpecDefault {
       },
     ),
     suite("variants")(
-      test("Default value") {
+      test("default value") {
         case class Foo(str: String, num: Int)
 
         val conf =
@@ -115,14 +115,63 @@ object GenConfigDocs2Spec extends ZIOSpecDefault {
             Foo(str, num)
           }
 
-        val expected = {
+        val expected =
           Table(
             Chunk(
-              Row("str", "Text"),
-              Row("num", "Integer", default = Some(1)),
+              Row("str", FieldType.Primitive("Text")),
+              Row("num", FieldType.Primitive("Integer"), default = Some(1)),
             ),
           )
-        }
+
+        assertTrue(GenConfigDocs2.gen(conf) == expected)
+      },
+      test("switch - constant") {
+        case class Foo(str: String, num: Int)
+
+        val numConf: Config[Int] =
+          Config.string.switch(
+            "one" -> Config.Constant(1),
+            "two" -> Config.succeed(2),
+          )
+
+        val conf =
+          (Config.string("str") ++ numConf.nested("num")).map { case (str, num) =>
+            Foo(str, num)
+          }
+
+        val expected =
+          Table(
+            Chunk(
+              Row("str", FieldType.Primitive("Text")),
+              Row("num", FieldType.Enum(FieldType.Primitive("Text"), Map("one" -> 1, "two" -> 2))),
+            ),
+          )
+
+        assertTrue(GenConfigDocs2.gen(conf) == expected)
+      },
+      test("switch - constant - inverted") {
+        case class Foo(str: String, num: Int)
+
+        val numConf: Config[Int] =
+          Config
+            .string("num")
+            .switch(
+              "one" -> Config.Constant(1),
+              "two" -> Config.succeed(2),
+            )
+
+        val conf =
+          (Config.string("str") ++ numConf).map { case (str, num) =>
+            Foo(str, num)
+          }
+
+        val expected =
+          Table(
+            Chunk(
+              Row("str", FieldType.Primitive("Text")),
+              Row("num", FieldType.Enum(FieldType.Primitive("Text"), Map("one" -> 1, "two" -> 2))),
+            ),
+          )
 
         assertTrue(GenConfigDocs2.gen(conf) == expected)
       },
