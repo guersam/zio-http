@@ -39,8 +39,8 @@ object GenConfigDocs extends App {
     }.mkString("\n\n")
   }
 
-//  def serverConfigTable =
-//    genTable(zio.http.Server.Config.config)
+  def serverConfigTable =
+    genTable(zio.http.Server.Config.config)
 
   case class Field(name: String, variants: NonEmptyChunk[Config[_]]) {
     def isPrimitive: Boolean =

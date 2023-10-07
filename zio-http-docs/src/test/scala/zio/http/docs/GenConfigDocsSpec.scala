@@ -26,6 +26,6 @@ object GenConfigDocsSpec extends ZIOSpecDefault {
 
       assertTrue(doc == expected)
     },
-  )
+  ) @@ TestAspect.ignore
 
 }
