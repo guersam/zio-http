@@ -10,7 +10,7 @@ object GenConfigDocs2Spec extends ZIOSpecDefault {
       test("single") {
         val conf     = Config.string("str")
         val expected =
-          Table(
+          ConfigDoc(
             Chunk(
               Row("str", FieldType.Primitive("Text")),
             ),
@@ -23,7 +23,7 @@ object GenConfigDocs2Spec extends ZIOSpecDefault {
           Config.string("str") ++ Config.int("num")
 
         val expected = {
-          Table(
+          ConfigDoc(
             Chunk(
               Row("str", FieldType.Primitive("Text")),
               Row("num", FieldType.Primitive("Integer")),
@@ -41,7 +41,7 @@ object GenConfigDocs2Spec extends ZIOSpecDefault {
           }
 
         val expected = {
-          Table(
+          ConfigDoc(
             Chunk(
               Row("str", FieldType.Primitive("Text")),
               Row("num", FieldType.Primitive("Integer")),
@@ -59,7 +59,7 @@ object GenConfigDocs2Spec extends ZIOSpecDefault {
           }
 
         val expected = {
-          Table(
+          ConfigDoc(
             Chunk(
               Row("str", FieldType.Primitive("Text")),
               Row("num", FieldType.Primitive("Integer"), description = Some("it's a number")),
@@ -77,7 +77,7 @@ object GenConfigDocs2Spec extends ZIOSpecDefault {
           }
 
         val expected = {
-          Table(
+          ConfigDoc(
             Chunk(
               Row("str", FieldType.Primitive("Text")),
               Row("num", FieldType.Primitive("Integer"), description = Some("it's a number")),
@@ -95,7 +95,7 @@ object GenConfigDocs2Spec extends ZIOSpecDefault {
           }
 
         val expected = {
-          Table(
+          ConfigDoc(
             Chunk(
               Row("str", FieldType.Primitive("Text")),
               Row("num", FieldType.Primitive("Integer"), optional = true),
@@ -116,7 +116,7 @@ object GenConfigDocs2Spec extends ZIOSpecDefault {
           }
 
         val expected =
-          Table(
+          ConfigDoc(
             Chunk(
               Row("str", FieldType.Primitive("Text")),
               Row("num", FieldType.Primitive("Integer"), default = Some(1)),
@@ -140,7 +140,7 @@ object GenConfigDocs2Spec extends ZIOSpecDefault {
           }
 
         val expected =
-          Table(
+          ConfigDoc(
             Chunk(
               Row("str", FieldType.Primitive("Text")),
               Row("num", FieldType.Enum(FieldType.Primitive("Text"), Map("one" -> 1, "two" -> 2))),
@@ -166,7 +166,7 @@ object GenConfigDocs2Spec extends ZIOSpecDefault {
           }
 
         val expected =
-          Table(
+          ConfigDoc(
             Chunk(
               Row("str", FieldType.Primitive("Text")),
               Row("num", FieldType.Enum(FieldType.Primitive("Text"), Map("one" -> 1, "two" -> 2))),
@@ -176,6 +176,17 @@ object GenConfigDocs2Spec extends ZIOSpecDefault {
         assertTrue(GenConfigDocs2.gen(conf) == expected)
       },
     ),
+    test("Markdown") {
+      println(
+        GenConfigDocs2
+          .gen(
+            zio.http.Server.Config.config,
+          )
+          .toDocusaurusMarkdown,
+      )
+
+      assertCompletes
+    },
   )
 
 }

@@ -1,6 +1,6 @@
 package zio.http.docs
 
-import zio.{Chunk, Config}
+import zio.{Chunk, Config, NonEmptyChunk}
 
 import scala.collection.View
 
@@ -12,15 +12,17 @@ case class Row(
   default: Option[Any] = None,
 )
 
-case class Table(rows: Chunk[Row]) {
+case class ConfigDoc(rows: Chunk[Row]) {
   def toDocusaurusMarkdown: String = {
-    val header = Chunk("Field", "Type")
+    val header = Chunk("Field", "Type", "Default", "Description")
 
     val body: Chunk[Chunk[String]] = rows.map { r =>
       val tpe = r.tpe match {
         case FieldType.Primitive(t) => t
+        case FieldType.Nested(t)    => s"[${r.name}](#${r.name})"
+        case other                  => other.toString
       }
-      Chunk(r.name, tpe)
+      Chunk(r.name, tpe, r.default.map(_.toString).getOrElse(""), r.description.getOrElse(""))
     }
 
     val columns = (header +: body).transpose.map { col =>
@@ -34,7 +36,20 @@ case class Table(rows: Chunk[Row]) {
 
     columns.transpose
       .map(_.mkString("|", "|", "|"))
-      .mkString("\n")
+      .mkString("\n") +
+      "\n\n" +
+      rows.flatMap { r =>
+        r.tpe match {
+          case FieldType.Nested(t) =>
+            Some(s"""### ${r.name}
+                    ^
+                    ^${t.toDocusaurusMarkdown}
+                    ^""".stripMargin('^'))
+
+          case _ => None
+        }
+
+      }.mkString("\n\n")
   }
 }
 
@@ -42,8 +57,11 @@ sealed trait FieldType
 object FieldType {
   case class Primitive(tpe: String)                       extends FieldType
   case class Enum(tpe: FieldType, mapping: Map[Any, Any]) extends FieldType
-  case class Constant(value: Any)                         extends FieldType
-  case object Unknown                                     extends FieldType
+
+  case class Constant(value: Any) extends FieldType
+
+  case class Nested(value: ConfigDoc) extends FieldType
+
 }
 
 trait Cursor {
@@ -51,7 +69,7 @@ trait Cursor {
 
   def history: List[Cursor]
 
-  def toTable: Table = Table(downFields.map(_.toRow))
+  def toTable: ConfigDoc = ConfigDoc(downFields.map(_.toRow))
 
   def downFields: Chunk[Cursor.FieldCursor] =
     config match {
@@ -154,7 +172,7 @@ object Cursor {
           .flatMap(_.getEnum(Some(config)))
           .orElse(downSwitch.flatMap(_.getEnum(None)))
           .orElse(downPrimitive.map(_.getType))
-          .getOrElse(FieldType.Unknown)
+          .getOrElse(FieldType.Nested(this.toTable))
 
       Row(name = name, tpe = tpe, description = getDescriptions.headOption, optional = optional, default = default)
     }
@@ -190,11 +208,7 @@ object Cursor {
     // Compiler cannot figure out `Config.Switch[_, _]` is `Config[_]`
     override def config: Config[_] = switch
 
-    def getEnum(overrideConfig: Option[Config[_]]): Option[FieldType.Enum] = {
-      println("SwitchCursor: getEnum")
-      history.foreach(h => println("  " + h.showConfig))
-      println()
-
+    def getEnum(overrideConfig: Option[Config[_]]): Option[FieldType.Enum] =
       down(overrideConfig.getOrElse(switch.config)).downPrimitive.flatMap { c =>
         val constMap = switch.map.view
           .mapValues(down(_).downConstant)
@@ -208,8 +222,6 @@ object Cursor {
         else
           None
       }
-
-    }
   }
 
   def fromConfig(config: Config[_]): Cursor = GenericCursor(config, Nil)
@@ -218,7 +230,7 @@ object Cursor {
 
 object GenConfigDocs2 {
 
-  def gen(config: Config[_]): Table = {
+  def gen(config: Config[_]): ConfigDoc = {
     Cursor.fromConfig(config).toTable
   }
 
