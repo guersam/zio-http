@@ -12,44 +12,66 @@ case class Row(
   default: Option[Any] = None,
 )
 
-case class ConfigDoc(rows: Chunk[Row]) {
-  def toDocusaurusMarkdown: String = {
-    val header = Chunk("Field", "Type", "Default", "Description")
+trait ConfigDoc {
 
-    val body: Chunk[Chunk[String]] = rows.map { r =>
-      val tpe = r.tpe match {
-        case FieldType.Primitive(t) => t
-        case FieldType.Nested(t)    => s"[${r.name}](#${r.name})"
-        case other                  => other.toString
+  def toDocusaurusMarkdown: String
+}
+
+object ConfigDoc {
+
+  def product(rows: Row*): Product         = Product(Chunk.from(rows))
+  def variants(docs: ConfigDoc*): Variants = Variants(Chunk.from(docs))
+  case class Product(rows: Chunk[Row]) extends ConfigDoc {
+
+    def toDocusaurusMarkdown: String = {
+      val header = Chunk("Field", "Type", "Default", "Description")
+
+      val body: Chunk[Chunk[String]] = rows.map { r =>
+        def show(ft: FieldType): String =
+          ft match {
+            case FieldType.Primitive(t) => t
+            case FieldType.Nested(t)    => s"[${r.name}](#${r.name})"
+            case FieldType.Sequence(t)  => s"Sequence of ${show(t)}"
+            case other                  => other.toString
+          }
+        val tpe                         = show(r.tpe)
+
+        Chunk(r.name, tpe, r.default.map(_.toString).getOrElse(""), r.description.getOrElse(""))
       }
-      Chunk(r.name, tpe, r.default.map(_.toString).getOrElse(""), r.description.getOrElse(""))
+
+      val columns = (header +: body).transpose.map { col =>
+        val len = col.view.map(_.length).max
+        val sep = s"-${"-" * (len + 1)}"
+        col.view
+          .map(c => s" ${c.padTo(len, ' ')} ")
+          .patch(1, Chunk(sep), 0)
+          .to(Chunk)
+      }
+
+      columns.transpose
+        .map(_.mkString("|", "|", "|"))
+        .mkString("\n") +
+        "\n\n" +
+        rows.flatMap { r =>
+          r.tpe match {
+            case FieldType.Nested(t) =>
+              Some(s"""### ${r.name}
+                      ^
+                      ^${t.toDocusaurusMarkdown}
+                      ^""".stripMargin('^'))
+
+            case _ => None
+          }
+
+        }.mkString("\n\n")
     }
-
-    val columns = (header +: body).transpose.map { col =>
-      val len = col.view.map(_.length).max
-      val sep = s"-${"-" * (len + 1)}"
-      col.view
-        .map(c => s" ${c.padTo(len, ' ')} ")
-        .patch(1, Chunk(sep), 0)
-        .to(Chunk)
-    }
-
-    columns.transpose
-      .map(_.mkString("|", "|", "|"))
-      .mkString("\n") +
-      "\n\n" +
-      rows.flatMap { r =>
-        r.tpe match {
-          case FieldType.Nested(t) =>
-            Some(s"""### ${r.name}
-                    ^
-                    ^${t.toDocusaurusMarkdown}
-                    ^""".stripMargin('^'))
-
-          case _ => None
-        }
-
-      }.mkString("\n\n")
+  }
+  case class Variants(docs: Chunk[ConfigDoc]) extends ConfigDoc {
+    override def toDocusaurusMarkdown: String =
+      s"""One of:
+         ^
+         ^${docs.map(_.toDocusaurusMarkdown).mkString("\n\n")}
+         ^""".stripMargin('^')
   }
 }
 
@@ -57,6 +79,7 @@ sealed trait FieldType
 object FieldType {
   case class Primitive(tpe: String)                       extends FieldType
   case class Enum(tpe: FieldType, mapping: Map[Any, Any]) extends FieldType
+  case class Sequence(tpe: FieldType)                     extends FieldType
 
   case class Constant(value: Any) extends FieldType
 
@@ -69,7 +92,19 @@ trait Cursor {
 
   def history: List[Cursor]
 
-  def toTable: ConfigDoc = ConfigDoc(downFields.map(_.toRow))
+  def toDocs: ConfigDoc =
+    downFallback match {
+      case Some(c) => ConfigDoc.Variants(c.getVariants)
+      case None    => ConfigDoc.Product(downFields.map(_.toRow))
+    }
+
+  def downFallback: Option[Cursor.FallbackCursor] =
+    config match {
+      case t: Config.Fallback[_]  => Some(Cursor.FallbackCursor(t, history))
+      case Config.Lazy(thunk)     => down(thunk()).downFallback
+      case Config.MapOrFail(c, _) => down(c).downFallback
+      case _                      => None
+    }
 
   def downFields: Chunk[Cursor.FieldCursor] =
     config match {
@@ -172,7 +207,7 @@ object Cursor {
           .flatMap(_.getEnum(Some(config)))
           .orElse(downSwitch.flatMap(_.getEnum(None)))
           .orElse(downPrimitive.map(_.getType))
-          .getOrElse(FieldType.Nested(this.toTable))
+          .getOrElse(FieldType.Nested(this.toDocs))
 
       Row(name = name, tpe = tpe, description = getDescriptions.headOption, optional = optional, default = default)
     }
@@ -191,6 +226,12 @@ object Cursor {
   }
 
   case class FallbackCursor(config: Config.Fallback[_], history: List[Cursor]) extends Cursor {
+
+    def getVariants: Chunk[ConfigDoc] =
+      Chunk(down(config.first).toDocs, down(config.second).toDocs).flatMap {
+        case ConfigDoc.Variants(docs) => docs
+        case doc                      => Chunk.single(doc)
+      }
 
     def getDefault: Option[Any] =
       config match {
@@ -231,7 +272,7 @@ object Cursor {
 object GenConfigDocs2 {
 
   def gen(config: Config[_]): ConfigDoc = {
-    Cursor.fromConfig(config).toTable
+    Cursor.fromConfig(config).toDocs
   }
 
 }
